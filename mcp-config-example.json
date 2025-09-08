@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "kubernetes-mcp-server": {
+      "transport": {
+        "type": "streamable_http",
+        "url": "https://mcp-server-ocp-mcp-server.apps.yywahj5e.centralindia.aroapp.io/mcp"
+      }
+    }
+  }
+}
