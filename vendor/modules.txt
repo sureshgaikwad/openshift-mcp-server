@@ -996,7 +996,7 @@ k8s.io/kube-openapi/pkg/spec3
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/proto/validation
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/kubectl v0.33.4
+# k8s.io/kubectl v0.34.0
 ## explicit; go 1.24.0
 k8s.io/kubectl/pkg/cmd/util
 k8s.io/kubectl/pkg/metricsutil
