@@ -134,11 +134,11 @@ func (s *Server) podsListInAllNamespaces(ctx context.Context, ctr mcp.CallToolRe
 		return nil, err
 	}
 	ret, err := derived.PodsListInAllNamespaces(ctx, resourceListOptions)
-       if err != nil {
-	       return NewTextResult("", fmt.Errorf("failed to list pods in all namespaces: %v", err)), nil
-       }
-       out, err := s.configuration.ListOutput.PrintObj(ret)
-       return NewTextResult(out, err), nil
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to list pods in all namespaces: %v", err)), nil
+	}
+	out, err := s.configuration.ListOutput.PrintObj(ret)
+	return NewTextResult(out, err), nil
 }
 
 func (s *Server) podsListInNamespace(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -158,11 +158,11 @@ func (s *Server) podsListInNamespace(ctx context.Context, ctr mcp.CallToolReques
 		return nil, err
 	}
 	ret, err := derived.PodsListInNamespace(ctx, ns.(string), resourceListOptions)
-       if err != nil {
-	       return NewTextResult("", fmt.Errorf("failed to list pods in namespace %s: %v", ns, err)), nil
-       }
-       out, err := s.configuration.ListOutput.PrintObj(ret)
-       return NewTextResult(out, err), nil
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to list pods in namespace %s: %v", ns, err)), nil
+	}
+	out, err := s.configuration.ListOutput.PrintObj(ret)
+	return NewTextResult(out, err), nil
 }
 
 func (s *Server) podsGet(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -179,11 +179,11 @@ func (s *Server) podsGet(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.Cal
 		return nil, err
 	}
 	ret, err := derived.PodsGet(ctx, ns.(string), name.(string))
-       if err != nil {
-	       return NewTextResult("", fmt.Errorf("failed to get pod %s in namespace %s: %v", name, ns, err)), nil
-       }
-       out, err := output.MarshalYaml(ret)
-       return NewTextResult(out, err), nil
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to get pod %s in namespace %s: %v", name, ns, err)), nil
+	}
+	out, err := output.MarshalYaml(ret)
+	return NewTextResult(out, err), nil
 }
 
 func (s *Server) podsDelete(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {

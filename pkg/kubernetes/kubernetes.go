@@ -39,45 +39,45 @@ type CloseWatchKubeConfig func() error
 
 type Kubernetes struct {
 	manager *Manager
-	}
+}
 
-	// ConfigurationView returns the configuration view, delegating to Manager.
-	func (k *Kubernetes) ConfigurationView(minify bool) (runtime.Object, error) {
-	       if k.manager == nil {
-		       return nil, errors.New("manager is nil")
-	       }
-	       return k.manager.ConfigurationView(minify)
+// ConfigurationView returns the configuration view, delegating to Manager.
+func (k *Kubernetes) ConfigurationView(minify bool) (runtime.Object, error) {
+	if k.manager == nil {
+		return nil, errors.New("manager is nil")
 	}
+	return k.manager.ConfigurationView(minify)
+}
 
-	// GetAPIServerHost returns the Kubernetes API server host.
-	func (k *Kubernetes) GetAPIServerHost() string {
-	       if k.manager == nil {
-		       return ""
-	       }
-	       return k.manager.GetAPIServerHost()
+// GetAPIServerHost returns the Kubernetes API server host.
+func (k *Kubernetes) GetAPIServerHost() string {
+	if k.manager == nil {
+		return ""
 	}
+	return k.manager.GetAPIServerHost()
+}
 
-	// Close closes the Kubernetes manager.
-	func (k *Kubernetes) Close() {
-	       if k.manager != nil {
-		       k.manager.Close()
-	       }
+// Close closes the Kubernetes manager.
+func (k *Kubernetes) Close() {
+	if k.manager != nil {
+		k.manager.Close()
 	}
+}
 
-	// Derived returns a derived Kubernetes client with the given context.
-	func (k *Kubernetes) Derived(ctx context.Context) (*Kubernetes, error) {
-	       if k.manager == nil {
-		       return nil, errors.New("manager is nil")
-	       }
-	       return k.manager.Derived(ctx)
+// Derived returns a derived Kubernetes client with the given context.
+func (k *Kubernetes) Derived(ctx context.Context) (*Kubernetes, error) {
+	if k.manager == nil {
+		return nil, errors.New("manager is nil")
 	}
+	return k.manager.Derived(ctx)
+}
 
-	// IsOpenShift returns true if the cluster is OpenShift.
-	func (k *Kubernetes) IsOpenShift(ctx context.Context) bool {
-	       if k.manager == nil {
-		       return false
-	       }
-	       return k.manager.IsOpenShift(ctx)
+// IsOpenShift returns true if the cluster is OpenShift.
+func (k *Kubernetes) IsOpenShift(ctx context.Context) bool {
+	if k.manager == nil {
+		return false
+	}
+	return k.manager.IsOpenShift(ctx)
 }
 
 type Manager struct {

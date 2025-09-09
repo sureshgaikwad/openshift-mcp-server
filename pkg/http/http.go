@@ -36,29 +36,29 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 		Handler: wrappedMux,
 	}
 
-       sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
-       streamableHttpServer := mcpServer.ServeHTTP(httpServer)
-       // Compliant SSE handler with CORS support
-       mux.HandleFunc(sseEndpoint, func(w http.ResponseWriter, r *http.Request) {
-	       w.Header().Set("Access-Control-Allow-Origin", "*")
-	       w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	       w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-	       if r.Method == http.MethodOptions {
-		       w.WriteHeader(http.StatusNoContent)
-		       return
-	       }
-	       if r.Method != http.MethodGet {
-		       w.WriteHeader(http.StatusMethodNotAllowed)
-		       return
-	       }
-	       w.Header().Set("Content-Type", "text/event-stream")
-	       w.Header().Set("Cache-Control", "no-cache")
-	       w.Header().Set("Connection", "keep-alive")
-	       // Delegate to the original SSE server
-	       sseServer.ServeHTTP(w, r)
-       })
-       mux.Handle(sseMessageEndpoint, sseServer)
-       mux.Handle(mcpEndpoint, streamableHttpServer)
+	sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
+	streamableHttpServer := mcpServer.ServeHTTP(httpServer)
+	// Compliant SSE handler with CORS support
+	mux.HandleFunc(sseEndpoint, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		// Delegate to the original SSE server
+		sseServer.ServeHTTP(w, r)
+	})
+	mux.Handle(sseMessageEndpoint, sseServer)
+	mux.Handle(mcpEndpoint, streamableHttpServer)
 	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

@@ -1,19 +1,23 @@
 package mcp
 
 import (
-	"github.com/containers/kubernetes-mcp-server/pkg/output"
-	kubernetes "github.com/containers/kubernetes-mcp-server/pkg/kubernetes"
 	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 
+	"github.com/containers/kubernetes-mcp-server/pkg/container"
+	kubernetes "github.com/containers/kubernetes-mcp-server/pkg/kubernetes"
+	"github.com/containers/kubernetes-mcp-server/pkg/output"
+
+	"github.com/containers/kubernetes-mcp-server/pkg/config"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"k8s.io/klog/v2"
-	"github.com/containers/kubernetes-mcp-server/pkg/config"
 	authenticationapiv1 "k8s.io/api/authentication/v1"
+	"k8s.io/klog/v2"
 )
 
 // NewServer constructs a new MCP Server instance
@@ -23,55 +27,111 @@ func NewServer(cfg Configuration) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes manager: %w", err)
 	}
-	
+
 	// Create a Kubernetes client instance from the manager
 	k, err := manager.Derived(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
-	
+
 	return &Server{
-		configuration: &cfg,
-		enabledTools: []string{"validateBaseImageUBI", "buildContainerImage", "pushContainerImage"},
-		k: k, // Initialize Kubernetes client
+		configuration:    &cfg,
+		enabledTools:     []string{"validateBaseImageUBI"},
+		k:                k,                      // Initialize Kubernetes client
+		containerManager: container.NewManager(), // Initialize container manager
 	}, nil
 }
-	// Stub for validateBaseImageUBI tool handler
-	func (s *Server) validateBaseImageUBI(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return NewTextResult("validateBaseImageUBI stub executed", nil), nil
+
+// validateBaseImageUBI tool handler - validates if Dockerfile uses Red Hat UBI base image
+func (s *Server) validateBaseImageUBI(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := ctr.GetArguments()
+
+	dockerfilePath := "Dockerfile" // Default value
+	if args["dockerfilePath"] != nil {
+		dockerfilePath = args["dockerfilePath"].(string)
 	}
 
-	// Stub for buildContainerImage tool handler
-	func (s *Server) buildContainerImage(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return NewTextResult("buildContainerImage stub executed", nil), nil
+	// Check if Dockerfile exists
+	if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
+		return NewTextResult("", fmt.Errorf("dockerfile not found at path: %s", dockerfilePath)), nil
 	}
 
-	// Stub for pushContainerImage tool handler
-	func (s *Server) pushContainerImage(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return NewTextResult("pushContainerImage stub executed", nil), nil
+	// Read Dockerfile content
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to read Dockerfile: %w", err)), nil
 	}
+	dockerfileContent := string(content)
+
+	// Check for Red Hat UBI base images
+	lines := strings.Split(dockerfileContent, "\n")
+
+	ubiFound := false
+	var baseImages []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToUpper(line), "FROM") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				baseImage := parts[1]
+				baseImages = append(baseImages, baseImage)
+
+				// Check if it's a Red Hat UBI image
+				if strings.Contains(baseImage, "registry.redhat.io/ubi") ||
+					strings.Contains(baseImage, "registry.access.redhat.com/ubi") ||
+					strings.Contains(baseImage, "ubi8/") || strings.Contains(baseImage, "ubi9/") {
+					ubiFound = true
+				}
+			}
+		}
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Dockerfile validation for: %s\n", dockerfilePath))
+	result.WriteString(fmt.Sprintf("Base images found: %v\n", baseImages))
+
+	if ubiFound {
+		result.WriteString("✅ PASSED: Red Hat Universal Base Image (UBI) detected\n")
+		result.WriteString("The Dockerfile uses Red Hat provided universal base images which are recommended for enterprise containers.\n")
+	} else {
+		result.WriteString("⚠️  WARNING: No Red Hat Universal Base Image (UBI) detected\n")
+		result.WriteString("Consider using Red Hat UBI images (registry.redhat.io/ubi8/*, registry.redhat.io/ubi9/*) for:\n")
+		result.WriteString("- Enterprise support and security updates\n")
+		result.WriteString("- Compliance with Red Hat container standards\n")
+		result.WriteString("- Better integration with OpenShift environments\n")
+	}
+
+	return NewTextResult(result.String(), nil), nil
+}
 
 type ContextKey string
 
 const TokenScopesContextKey = ContextKey("TokenScopesContextKey")
 
 type Configuration struct {
-	Profile    Profile
-	ListOutput output.Output
+	Profile      Profile
+	ListOutput   output.Output
 	StaticConfig *config.StaticConfig
 }
 
 type Server struct {
 	// k is the Kubernetes client manager
 	k *kubernetes.Kubernetes
-	enabledTools []string
-	configuration *Configuration
+	// containerManager manages container runtimes
+	containerManager *container.Manager
+	enabledTools     []string
+	configuration    *Configuration
 }
 
-// ServeStdio stub implementation
+// ServeStdio implements the STDIO MCP server
 func (s *Server) ServeStdio() error {
-	// TODO: Implement actual stdio serving logic
-	return nil
+	// Create the underlying MCP server
+	mcpServer := server.NewMCPServer("kubernetes-mcp-server", "1.0.0")
+	s.setupMCPServer(mcpServer)
+
+	// Serve STDIO using the server package function
+	return server.ServeStdio(mcpServer)
 }
 
 // Implements KubernetesApiTokenVerifier
@@ -95,23 +155,23 @@ func (s *Server) ServeHTTP(httpServer *http.Server) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		
+
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Create the underlying MCP server and handle the request
 		mcpServer := server.NewMCPServer("kubernetes-mcp-server", "1.0.0")
 		s.setupMCPServer(mcpServer)
-		
+
 		// Use the server's built-in HTTP handler
 		streamableServer := server.NewStreamableHTTPServer(mcpServer)
 		streamableServer.ServeHTTP(w, r)
@@ -120,87 +180,21 @@ func (s *Server) ServeHTTP(httpServer *http.Server) http.Handler {
 
 // setupMCPServer configures the MCP server with all tools
 func (s *Server) setupMCPServer(mcpServer *server.MCPServer) {
-	// Get the profile to access all original tools
+	// Get the profile to access all tools
 	profile := ProfileFromString("full")
 	if profile != nil {
-		// Add all tools from the profile (this includes all original 19+ tools)
+		// Add all tools from the profile (this includes all Kubernetes and container tools)
 		allTools := profile.GetTools(s)
 		mcpServer.AddTools(allTools...)
-	} else {
-		// Fallback: manually add the new tools if profile is not found
-		// Add validateBaseImageUBI tool
-		validateUBITool := mcp.Tool{
-			Name:        "validateBaseImageUBI",
-			Description: "Validates if the base image used for container build is Red Hat provided universal base image",
-			InputSchema: mcp.ToolInputSchema{
-				Type: "object",
-				Properties: map[string]interface{}{
-					"image": map[string]interface{}{
-						"type":        "string",
-						"description": "Container image name to validate",
-					},
-				},
-				Required: []string{"image"},
-			},
-		}
-		mcpServer.AddTool(validateUBITool, s.validateBaseImageUBI)
-
-		// Add buildContainerImage tool
-		buildTool := mcp.Tool{
-			Name:        "buildContainerImage",
-			Description: "Builds a container image using provided Dockerfile",
-			InputSchema: mcp.ToolInputSchema{
-				Type: "object",
-				Properties: map[string]interface{}{
-					"dockerfile": map[string]interface{}{
-						"type":        "string",
-						"description": "Path to Dockerfile",
-					},
-					"context": map[string]interface{}{
-						"type":        "string",
-						"description": "Build context directory",
-					},
-					"tag": map[string]interface{}{
-						"type":        "string",
-						"description": "Image tag",
-					},
-				},
-				Required: []string{"dockerfile", "context", "tag"},
-			},
-		}
-		mcpServer.AddTool(buildTool, s.buildContainerImage)
-
-		// Add pushContainerImage tool
-		pushTool := mcp.Tool{
-			Name:        "pushContainerImage",
-			Description: "Pushes a container image to a registry",
-			InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"image": map[string]interface{}{
-					"type":        "string",
-					"description": "Image name with tag to push",
-				},
-				"registry": map[string]interface{}{
-					"type":        "string",
-					"description": "Registry URL",
-				},
-			},
-			Required: []string{"image"},
-		},
-		}
-		mcpServer.AddTool(pushTool, s.pushContainerImage)
 	}
 }
 
-
-
 // GetKubernetesAPIServerHost returns the Kubernetes API server host from the configuration.
 func (s *Server) GetKubernetesAPIServerHost() string {
-       if s.k == nil {
-	       return ""
-       }
-       return s.k.GetAPIServerHost()
+	if s.k == nil {
+		return ""
+	}
+	return s.k.GetAPIServerHost()
 }
 
 func (s *Server) GetEnabledTools() []string {
@@ -208,9 +202,9 @@ func (s *Server) GetEnabledTools() []string {
 }
 
 func (s *Server) Close() {
-       if s.k != nil {
-	       s.k.Close()
-       }
+	if s.k != nil {
+		s.k.Close()
+	}
 }
 
 func NewTextResult(content string, err error) *mcp.CallToolResult {
@@ -237,15 +231,15 @@ func NewTextResult(content string, err error) *mcp.CallToolResult {
 
 func contextFunc(ctx context.Context, r *http.Request) context.Context {
 	// Get the standard Authorization header (OAuth compliant)
-       authHeader := r.Header.Get(string(kubernetes.OAuthAuthorizationHeader))
+	authHeader := r.Header.Get(string(kubernetes.OAuthAuthorizationHeader))
 	if authHeader != "" {
-	       return context.WithValue(ctx, kubernetes.OAuthAuthorizationHeader, authHeader)
+		return context.WithValue(ctx, kubernetes.OAuthAuthorizationHeader, authHeader)
 	}
 
 	// Fallback to custom header for backward compatibility
-       customAuthHeader := r.Header.Get(string(kubernetes.CustomAuthorizationHeader))
+	customAuthHeader := r.Header.Get(string(kubernetes.CustomAuthorizationHeader))
 	if customAuthHeader != "" {
-	       return context.WithValue(ctx, kubernetes.OAuthAuthorizationHeader, customAuthHeader)
+		return context.WithValue(ctx, kubernetes.OAuthAuthorizationHeader, customAuthHeader)
 	}
 
 	return ctx

@@ -43,11 +43,11 @@ func (s *Server) namespacesList(ctx context.Context, _ mcp.CallToolRequest) (*mc
 		return nil, err
 	}
 	ret, err := derived.NamespacesList(ctx, kubernetes.ResourceListOptions{AsTable: s.configuration.ListOutput.AsTable()})
-       if err != nil {
-	       return NewTextResult("", fmt.Errorf("failed to list namespaces: %v", err)), nil
-       }
-       out, err := s.configuration.ListOutput.PrintObj(ret)
-       return NewTextResult(out, err), nil
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to list namespaces: %v", err)), nil
+	}
+	out, err := s.configuration.ListOutput.PrintObj(ret)
+	return NewTextResult(out, err), nil
 }
 
 func (s *Server) projectsList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -56,9 +56,9 @@ func (s *Server) projectsList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.
 		return nil, err
 	}
 	ret, err := derived.ProjectsList(ctx, kubernetes.ResourceListOptions{AsTable: s.configuration.ListOutput.AsTable()})
-       if err != nil {
-	       return NewTextResult("", fmt.Errorf("failed to list projects: %v", err)), nil
-       }
-       out, err := s.configuration.ListOutput.PrintObj(ret)
-       return NewTextResult(out, err), nil
+	if err != nil {
+		return NewTextResult("", fmt.Errorf("failed to list projects: %v", err)), nil
+	}
+	out, err := s.configuration.ListOutput.PrintObj(ret)
+	return NewTextResult(out, err), nil
 }
