@@ -359,10 +359,10 @@ type RuntimeInfo struct {
 
 // StorageInfo contains information about storage
 type StorageInfo struct {
-	Driver      string     `json:"driver"`
-	Root        string     `json:"root"`
-	RunRoot     string     `json:"runRoot"`
-	GraphStatus [][]string `json:"graphStatus,omitempty"`
+	Driver      string            `json:"driver"`
+	Root        string            `json:"root"`
+	RunRoot     string            `json:"runRoot"`
+	GraphStatus map[string]string `json:"graphStatus,omitempty"`
 }
 
 // HostInfo contains information about the host

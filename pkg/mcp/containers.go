@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -13,14 +15,39 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// detectDockerfile intelligently detects the appropriate Dockerfile based on context and availability
+func detectDockerfile(contextDir string) string {
+	// Define Dockerfile priority order based on OpenShift/enterprise preference
+	dockerfileOptions := []struct {
+		path        string
+		description string
+	}{
+		{"Dockerfile.ocp", "OpenShift-optimized Dockerfile with Red Hat UBI base images"},
+		{"Dockerfile.ci", "CI/CD optimized Dockerfile with enterprise compliance"},
+		{"Dockerfile", "Standard Dockerfile"},
+	}
+
+	for _, option := range dockerfileOptions {
+		dockerfilePath := filepath.Join(contextDir, option.path)
+		if _, err := os.Stat(dockerfilePath); err == nil {
+			fmt.Printf("🐳 Detected %s: %s\n", option.path, option.description)
+			return option.path
+		}
+	}
+
+	// Fallback to default
+	fmt.Printf("⚠️  No specific Dockerfile found, using default: Dockerfile\n")
+	return "Dockerfile"
+}
+
 // initContainers initializes container-related MCP tools
 func (s *Server) initContainers() []server.ServerTool {
 	return []server.ServerTool{
 		// Image management tools
 		{Tool: mcp.NewTool("container_build_image",
-			mcp.WithDescription("Build a container image using the available container runtime (Podman/Docker)"),
+			mcp.WithDescription("Build a container image using the available container runtime (Podman/Docker). Automatically detects appropriate Dockerfile (Dockerfile, Dockerfile.ocp, Dockerfile.ci) based on context."),
 			mcp.WithString("imageTag", mcp.Description("Image tag to build (e.g., quay.io/user/image:v1)"), mcp.Required()),
-			mcp.WithString("dockerfile", mcp.Description("Path to Dockerfile (default: Dockerfile)")),
+			mcp.WithString("dockerfile", mcp.Description("Path to Dockerfile (default: auto-detected from repository - Dockerfile.ocp for OpenShift, Dockerfile.ci for CI, or Dockerfile)")),
 			mcp.WithString("context", mcp.Description("Build context directory (default: current directory)")),
 			mcp.WithString("platform", mcp.Description("Target platform (e.g., linux/amd64, linux/arm64)")),
 			mcp.WithString("target", mcp.Description("Build target stage in multi-stage Dockerfile")),
@@ -252,19 +279,24 @@ func (s *Server) containerBuildImage(ctx context.Context, ctr mcp.CallToolReques
 		return NewTextResult("", fmt.Errorf("container runtime not available: %w", err)), nil
 	}
 
+	// Set context directory first
+	contextDir := "."
+	if ctx, ok := args["context"].(string); ok && ctx != "" {
+		contextDir = ctx
+	}
+
+	// Intelligent Dockerfile detection
+	dockerfile := detectDockerfile(contextDir)
+	if dockerfileArg, ok := args["dockerfile"].(string); ok && dockerfileArg != "" {
+		dockerfile = dockerfileArg
+		fmt.Printf("🎯 Using user-specified Dockerfile: %s\n", dockerfile)
+	}
+
 	// Build options
 	opts := container.BuildOptions{
 		ImageTag:   imageTag,
-		ContextDir: ".",
-		Dockerfile: "Dockerfile",
-	}
-
-	if dockerfile, ok := args["dockerfile"].(string); ok && dockerfile != "" {
-		opts.Dockerfile = dockerfile
-	}
-
-	if contextDir, ok := args["context"].(string); ok && contextDir != "" {
-		opts.ContextDir = contextDir
+		ContextDir: contextDir,
+		Dockerfile: dockerfile,
 	}
 
 	if platform, ok := args["platform"].(string); ok && platform != "" {
@@ -314,6 +346,15 @@ func (s *Server) containerBuildImage(ctx context.Context, ctr mcp.CallToolReques
 	// Format result
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("Container Image Build Report\n"))
+	output.WriteString(fmt.Sprintf("============================\n"))
+	output.WriteString(fmt.Sprintf("📁 Context Directory: %s\n", opts.ContextDir))
+	output.WriteString(fmt.Sprintf("🐳 Dockerfile Used: %s\n", opts.Dockerfile))
+	output.WriteString(fmt.Sprintf("🏷️  Image Tag: %s\n", opts.ImageTag))
+	if opts.Platform != "" {
+		output.WriteString(fmt.Sprintf("🖥️  Target Platform: %s\n", opts.Platform))
+	}
+	output.WriteString(fmt.Sprintf("⏱️  Build Duration: %v\n", result.Duration))
+	output.WriteString(fmt.Sprintf("✅ Build Status: %v\n", result.Success))
 	output.WriteString(fmt.Sprintf("============================\n"))
 	output.WriteString(fmt.Sprintf("Runtime: %s\n", runtime.Name()))
 	output.WriteString(fmt.Sprintf("Image Tag: %s\n", result.ImageTag))

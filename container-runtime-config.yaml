@@ -1,0 +1,78 @@
+# Container Runtime Configuration for OpenShift MCP Server
+# This file allows you to configure container runtime detection for different deployment scenarios
+
+# Environment-specific runtime paths
+runtime_paths:
+  podman:
+    # Common paths where Podman might be installed
+    - "/usr/bin/podman"           # Standard RHEL/CentOS/Fedora location
+    - "/usr/local/bin/podman"     # Alternative Linux location
+    - "/opt/podman/bin/podman"    # macOS Podman Desktop
+    - "/bin/podman"               # Some minimal containers
+    - "/usr/sbin/podman"          # Some system installations
+    - "/opt/homebrew/bin/podman"  # macOS Homebrew
+    - "/home/linuxbrew/.linuxbrew/bin/podman" # Linux Homebrew
+    - "/snap/bin/podman"          # Ubuntu Snap packages
+
+  docker:
+    # Common paths where Docker might be installed  
+    - "/usr/bin/docker"           # Standard Linux location
+    - "/usr/local/bin/docker"     # Alternative Linux location
+    - "/bin/docker"               # Some minimal containers
+    - "/usr/sbin/docker"          # Some system installations
+    - "/opt/homebrew/bin/docker"  # macOS Homebrew
+    - "/home/linuxbrew/.linuxbrew/bin/docker" # Linux Homebrew
+    - "/snap/bin/docker"          # Ubuntu Snap packages
+
+# OpenShift-specific configurations
+openshift:
+  # Prefer Podman over Docker (Red Hat recommendation)
+  preferred_runtime: "podman"
+  
+  # Enable container runtime detection logging
+  debug_detection: true
+  
+  # Fallback behavior when no runtime is found
+  fallback_strategy: "error"  # Options: "error", "warn", "skip"
+
+# Environment variable overrides
+# These take precedence over path-based detection
+env_overrides:
+  # Set PODMAN_BINARY to specify exact Podman path
+  # Set DOCKER_BINARY to specify exact Docker path
+  # Set CONTAINER_RUNTIME to force a specific runtime ("podman" or "docker")
+  
+# Container runtime feature flags
+features:
+  # Enable Docker runtime support (in addition to Podman)
+  enable_docker: true
+  
+  # Enable runtime version checking
+  check_versions: true
+  
+  # Enable runtime connectivity testing
+  test_connectivity: true
+
+# Deployment-specific settings
+deployment:
+  # For containerized MCP server deployments
+  containerized:
+    # Mount paths for container runtime sockets
+    podman_socket: "/run/podman/podman.sock"
+    docker_socket: "/var/run/docker.sock"
+    
+    # Security context considerations
+    privileged_mode: false
+    host_network: false
+    
+  # For OpenShift/Kubernetes deployments
+  kubernetes:
+    # Use service account with appropriate RBAC
+    service_account: "mcp-server"
+    
+    # Security context constraints
+    scc: "restricted"
+    
+    # Node selection for container runtime access
+    node_selector:
+      node-role.kubernetes.io/worker: ""

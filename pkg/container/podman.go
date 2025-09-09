@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -19,11 +20,65 @@ type PodmanRuntime struct {
 	binaryPath string
 }
 
+// findPodmanBinary searches for podman binary in multiple locations
+// This handles different deployment scenarios including OpenShift environments
+func findPodmanBinary() string {
+	// Common locations where podman might be installed
+	commonPaths := []string{
+		"/usr/bin/podman",                       // Standard Linux location
+		"/usr/local/bin/podman",                 // Alternative Linux location
+		"/opt/podman/bin/podman",                // macOS Podman Desktop
+		"/bin/podman",                           // Some minimal containers
+		"/usr/sbin/podman",                      // Some system installations
+		"/opt/homebrew/bin/podman",              // macOS Homebrew
+		"/home/linuxbrew/.linuxbrew/bin/podman", // Linux Homebrew
+	}
+
+	// First, try the standard PATH lookup
+	if path, err := exec.LookPath("podman"); err == nil {
+		klog.V(3).Infof("Found podman via PATH: %s", path)
+		return path
+	}
+
+	// Then check common installation paths
+	for _, path := range commonPaths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			// Additional check: ensure it's executable
+			if info.Mode()&0111 != 0 {
+				klog.V(3).Infof("Found podman at: %s", path)
+				return path
+			}
+		}
+	}
+
+	// For OpenShift/container environments, check if podman is available via which command
+	if cmd := exec.Command("which", "podman"); cmd != nil {
+		if output, err := cmd.Output(); err == nil {
+			path := strings.TrimSpace(string(output))
+			if path != "" {
+				klog.V(3).Infof("Found podman via which: %s", path)
+				return path
+			}
+		}
+	}
+
+	// Check environment variable override
+	if envPath := os.Getenv("PODMAN_BINARY"); envPath != "" {
+		if info, err := os.Stat(envPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			klog.V(3).Infof("Found podman via PODMAN_BINARY env var: %s", envPath)
+			return envPath
+		}
+	}
+
+	klog.V(2).Info("Podman binary not found in any common location")
+	return ""
+}
+
 // NewPodmanRuntime creates a new PodmanRuntime instance
 func NewPodmanRuntime() (*PodmanRuntime, error) {
-	binaryPath, err := exec.LookPath("podman")
-	if err != nil {
-		return nil, fmt.Errorf("podman binary not found: %w", err)
+	binaryPath := findPodmanBinary()
+	if binaryPath == "" {
+		return nil, fmt.Errorf("podman binary not found in PATH or common locations")
 	}
 
 	return &PodmanRuntime{
@@ -33,8 +88,7 @@ func NewPodmanRuntime() (*PodmanRuntime, error) {
 
 // IsAvailable checks if Podman is available
 func (p *PodmanRuntime) IsAvailable() bool {
-	_, err := exec.LookPath("podman")
-	return err == nil
+	return findPodmanBinary() != ""
 }
 
 // Name returns the runtime name
@@ -764,10 +818,10 @@ func (p *PodmanRuntime) Info(ctx context.Context) (*RuntimeInfo, error) {
 			Version string `json:"Version"`
 		} `json:"version"`
 		Store struct {
-			GraphDriverName string     `json:"graphDriverName"`
-			GraphRoot       string     `json:"graphRoot"`
-			RunRoot         string     `json:"runRoot"`
-			GraphStatus     [][]string `json:"graphStatus"`
+			GraphDriverName string            `json:"graphDriverName"`
+			GraphRoot       string            `json:"graphRoot"`
+			RunRoot         string            `json:"runRoot"`
+			GraphStatus     map[string]string `json:"graphStatus"`
 		} `json:"store"`
 		Host struct {
 			Hostname string `json:"hostname"`
@@ -777,7 +831,9 @@ func (p *PodmanRuntime) Info(ctx context.Context) (*RuntimeInfo, error) {
 			CPUs     int    `json:"cpus"`
 			MemTotal int64  `json:"memTotal"`
 		} `json:"host"`
-		Registries map[string]string `json:"registries"`
+		Registries struct {
+			Search []string `json:"search"`
+		} `json:"registries"`
 	}
 
 	if err := json.Unmarshal(stdout.Bytes(), &infoData); err != nil {
@@ -805,7 +861,7 @@ func (p *PodmanRuntime) Info(ctx context.Context) (*RuntimeInfo, error) {
 			CPUs:         infoData.Host.CPUs,
 			Memory:       infoData.Host.MemTotal,
 		},
-		Registries:      infoData.Registries,
+		Registries:      map[string]string{"search": strings.Join(infoData.Registries.Search, ", ")},
 		ContainersCount: len(containers),
 		ImagesCount:     len(images),
 	}, nil

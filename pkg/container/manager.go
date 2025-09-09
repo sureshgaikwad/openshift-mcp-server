@@ -31,15 +31,33 @@ func (m *Manager) initRuntimes() {
 		if m.primary == nil {
 			m.primary = podman
 		}
+		fmt.Printf("✅ Podman runtime initialized successfully\n")
+	} else {
+		fmt.Printf("⚠️  Podman runtime not available: %v\n", err)
 	}
 
-	// TODO: Add Docker runtime support
-	// if docker, err := NewDockerRuntime(); err == nil && docker.IsAvailable() {
-	//     m.runtimes["docker"] = docker
-	//     if m.primary == nil {
-	//         m.primary = docker
-	//     }
-	// }
+	// Add Docker runtime support as fallback
+	if docker, err := NewDockerRuntime(); err == nil && docker.IsAvailable() {
+		m.runtimes["docker"] = docker
+		if m.primary == nil {
+			m.primary = docker
+		}
+		fmt.Printf("✅ Docker runtime initialized successfully\n")
+	} else {
+		fmt.Printf("⚠️  Docker runtime not available: %v\n", err)
+	}
+
+	// Log available runtimes for debugging
+	if len(m.runtimes) == 0 {
+		fmt.Printf("❌ No container runtimes available. Check PATH or install Podman/Docker.\n")
+		fmt.Printf("💡 Tip: Set PODMAN_BINARY or DOCKER_BINARY environment variables to specify custom paths.\n")
+	} else {
+		availableRuntimes := make([]string, 0, len(m.runtimes))
+		for name := range m.runtimes {
+			availableRuntimes = append(availableRuntimes, name)
+		}
+		fmt.Printf("🚀 Available container runtimes: %v (primary: %s)\n", availableRuntimes, m.primary.Name())
+	}
 }
 
 // GetRuntime returns a specific container runtime by name

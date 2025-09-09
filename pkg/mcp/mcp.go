@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -42,11 +43,32 @@ func NewServer(cfg Configuration) (*Server, error) {
 	}, nil
 }
 
+// detectDockerfileForValidation intelligently detects the appropriate Dockerfile for validation
+func detectDockerfileForValidation(contextDir string) string {
+	// Define Dockerfile priority order for validation (same as build)
+	dockerfileOptions := []string{
+		"Dockerfile.ocp", // OpenShift-optimized (most likely to have UBI)
+		"Dockerfile.ci",  // CI/CD optimized
+		"Dockerfile",     // Standard
+	}
+
+	for _, dockerfileName := range dockerfileOptions {
+		dockerfilePath := filepath.Join(contextDir, dockerfileName)
+		if _, err := os.Stat(dockerfilePath); err == nil {
+			return dockerfilePath
+		}
+	}
+
+	// Fallback to default
+	return "Dockerfile"
+}
+
 // validateBaseImageUBI tool handler - validates if Dockerfile uses Red Hat UBI base image
 func (s *Server) validateBaseImageUBI(ctx context.Context, ctr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := ctr.GetArguments()
 
-	dockerfilePath := "Dockerfile" // Default value
+	// Use intelligent Dockerfile detection by default
+	dockerfilePath := detectDockerfileForValidation(".")
 	if args["dockerfilePath"] != nil {
 		dockerfilePath = args["dockerfilePath"].(string)
 	}
