@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: mcp-server
-        image: quay.io/sureshgaikwad/ocp-mcp:v8
+        image: quay.io/sureshgaikwad/ocp-mcp:ubi
         ports:
         - containerPort: 8080
         env:
